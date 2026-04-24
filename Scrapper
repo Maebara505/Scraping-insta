@@ -8,48 +8,56 @@ from playwright.async_api import async_playwright
 
 nest_asyncio.apply()
 
-# --- CONFIGURACIÓN ---
-SESSION_ID = "SESSION_ID"
+# --- DATOS DEL ESTUDIANTE ---
+# Luis André Luna Palacios - Ingeniería en Sistemas - UCE
+# ----------------------------
+
+SESSION_ID = "77976809109%3AMKOgNNGulfVAhM%3A14%3AAYguRmk-6kPNlkePRpy7ymjKLnSTewj8YZFlQj_y3A"
 USERNAME = "luisandreluna01"
 
-def obtener_seguidores_requests():
-    """Extrae la información base: Seguidores, Bio y Nombre"""
-    print(f"\n[1] Extrayendo información del perfil...")
+def obtener_perfil_requests():
+    """EXTRAE NOMBRE, BIO Y SEGUIDORES (DATOS DEL PERFIL)"""
+    print(f"\n[1] Accediendo al perfil de {USERNAME} para extraer Bio y Nombre...")
     url = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={USERNAME}"
     headers = {
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "x-ig-app-id": "936619743392459"
     }
 
-    seguidores_data = []
+    perfil_info = []
     try:
         res = requests.get(url, headers=headers, cookies={'sessionid': SESSION_ID})
         if res.status_code == 200:
             data = res.json().get('data', {}).get('user', {})
+
+            # Datos específicos solicitados
+            nombre_completo = data.get('full_name', 'No encontrado')
+            biografia = data.get('biography', 'No encontrado')
             seguidores = data.get('edge_followed_by', {}).get('count', 0)
             seguidos = data.get('edge_follow', {}).get('count', 0)
-            nombre = data.get('full_name', 'Sin nombre')
-            bio = data.get('biography', 'Sin bio')
 
-            print(f"    ✓ Cuenta conectada: {nombre} | Seguidores: {seguidores}")
+            print(f"    ✓ Nombre: {nombre_completo}")
+            print(f"    ✓ Bio: {biografia}")
 
-            seguidores_data.append({
-                'tipo_dato': 'Perfil Base',
-                'post_url': f"Nombre: {nombre} | Bio: {bio}",
-                'detalle': f"{seguidores} seguidores, {seguidos} seguidos",
-                'comment_1': '',
-                'comment_2': '',
-                'comment_3': ''
+            perfil_info.append({
+                'tipo_dato': 'INFORMACIÓN DEL PERFIL',
+                'post_url': f"Nombre Completo: {nombre_completo}",
+                'detalle': f"Biografía: {biografia}",
+                'comment_1': f"Seguidores: {seguidores}",
+                'comment_2': f"Seguidos: {seguidos}",
+                'comment_3': 'N/A'
             })
+        else:
+            print(f"    [!] Error al obtener perfil: Status {res.status_code}")
     except Exception as e:
-        print("    [!] Error en requests:", e)
+        print(f"    [!] Error en requests: {e}")
 
-    return seguidores_data
+    return perfil_info
 
-async def extraer_posts_y_comentarios():
-    """Opción Nuclear: Agarra todo el texto visible y lo limpia con Python"""
-    print(f"\n[2] Iniciando Playwright (Modo Nuclear)...")
-    datos_posts = []
+async def extraer_contenido_dinamico():
+    """EXTRAE LIKES Y COMENTARIOS REALES USANDO PLAYWRIGHT"""
+    print(f"\n[2] Iniciando Playwright para extraer contenido de las publicaciones...")
+    posts_data = []
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -60,88 +68,76 @@ async def extraer_posts_y_comentarios():
         await page.goto(f"https://www.instagram.com/{USERNAME}/")
         await page.wait_for_timeout(3000)
 
+        # Enlaces a los primeros 10 posts
         enlaces = await page.locator('a[href*="/p/"]').evaluate_all('elements => elements.map(e => e.href)')
         enlaces = enlaces[:10]
 
-        if not enlaces:
-            print("    [!] No se encontraron enlaces de fotos.")
-            await browser.close()
-            return []
-
         for idx, url in enumerate(enlaces):
             await page.goto(url)
-            await page.wait_for_timeout(4000) # Tiempo vital para que cargue la página
+            await page.wait_for_timeout(4000)
 
+            # Extraer el bloque de texto completo del post
             try:
-                texto_crudo = await page.locator('article').inner_text(timeout=5000)
+                cuerpo_post = await page.locator('article').inner_text(timeout=5000)
             except:
-                texto_crudo = await page.locator('main').inner_text()
+                cuerpo_post = await page.locator('main').inner_text()
 
-            lineas = [l.strip() for l in texto_crudo.split('\n') if l.strip()]
+            # Limpieza y filtrado
+            lineas = [l.strip() for l in cuerpo_post.split('\n') if l.strip()]
 
-            basura = [
-                'Home', 'Search', 'Explore', 'Reels', 'Messages', 'Notifications', 'Create', 'Profile', 'More',
-                'Me gusta', 'Responder', 'Compartir', 'Guardar', 'Log in', 'Sign Up', 'Ver traducciones',
-                'Ocultar', 'Respuestas', 'Ver traducción', 'Inicio', 'Explorar', 'Mensajes', 'Notificaciones',
-                'Crear', 'Perfil', 'Más', 'Also from Meta', 'Reply', 'Like', 'See translation', 'Edited',
-                'Editado', 'View profile', 'Ver perfil', 'Original audio', 'Audio original', 'Follow', 'Seguir'
-            ]
+            # Filtros de ruido
+            palabras_sistema = ['Me gusta', 'Responder', 'Ver traducción', 'Compartir', 'Guardar', 'Also from Meta', 'Follow', 'Seguir', 'Reply']
 
-            comentarios_limpios = []
-            likes_texto = 'Oculto'
+            comentarios_finales = []
+            likes = 'Oculto'
 
             for linea in lineas:
-                if 'Me gusta' in linea or 'likes' in linea or 'reproducciones' in linea:
-                    if likes_texto == 'Oculto' and 'Le gusta a' not in linea:
-                        likes_texto = linea
+                if 'Me gusta' in linea or 'likes' in linea:
+                    if likes == 'Oculto' and 'Le gusta a' not in linea:
+                        likes = linea
 
-                if linea in basura: continue
-                if linea == USERNAME: continue # Borramos tu nombre
-                if linea.startswith('Le gusta a') or linea.startswith('Liked by'): continue
-
+                # Ignorar basura, tu usuario y fechas
+                if linea in palabras_sistema or linea == USERNAME or linea.startswith('Le gusta a'): continue
                 if re.match(r'^\d+[smhdw]$', linea): continue
-                # Borramos fechas largas (April 5, November 9, 2025)
                 if re.match(r'^(January|February|March|April|May|June|July|August|September|October|November|December|Enero|Febrero|Marzo|Abril|Mayo|Junio|Julio|Agosto|Septiembre|Octubre|Noviembre|Diciembre)', linea, re.IGNORECASE): continue
 
-                comentarios_limpios.append(linea)
+                comentarios_finales.append(linea)
 
-            if comentarios_limpios:
-                comentarios_limpios.pop(0)
+            # Quitamos la descripción (tu comentario original)
+            if comentarios_finales:
+                comentarios_finales.pop(0)
 
-            datos_posts.append({
-                'tipo_dato': f'Post {idx+1}',
+            posts_data.append({
+                'tipo_dato': f'Publicación {idx+1}',
                 'post_url': url,
-                'detalle': f'Interacciones: {likes_texto}',
-                'comment_1': comentarios_limpios[0] if len(comentarios_limpios) > 0 else 'Sin comentarios',
-                'comment_2': comentarios_limpios[1] if len(comentarios_limpios) > 1 else 'Sin comentarios',
-                'comment_3': comentarios_limpios[2] if len(comentarios_limpios) > 2 else 'Sin comentarios'
+                'detalle': f'Interacciones: {likes}',
+                'comment_1': comentarios_finales[0] if len(comentarios_finales) > 0 else 'Sin comentarios',
+                'comment_2': comentarios_finales[1] if len(comentarios_finales) > 1 else 'Sin comentarios',
+                'comment_3': comentarios_finales[2] if len(comentarios_finales) > 2 else 'Sin comentarios'
             })
-            print(f"    ✓ Post {idx+1}/{len(enlaces)} | {likes_texto} | Extraídos: {len(comentarios_limpios)} fragmentos")
+            print(f"    ✓ Publicación {idx+1}/10 procesada.")
 
         await browser.close()
-        return datos_posts
+        return posts_data
 
-async def ejecutar_tarea():
-    base_info = obtener_seguidores_requests()
-    posts_info = await extraer_posts_y_comentarios()
+async def ejecutar_scrapper():
+    # Paso 1: Perfil (Requests)
+    datos_perfil = obtener_perfil_requests()
+    # Paso 2: Posts (Playwright)
+    datos_posts = await extraer_contenido_dinamico()
 
-    data_final = base_info + posts_info
+    total_data = datos_perfil + datos_posts
 
-    if data_final:
-        archivo = f'{USERNAME}_tarea_final.csv'
-        with open(archivo, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=['tipo_dato', 'post_url', 'detalle', 'comment_1', 'comment_2', 'comment_3'])
+    if total_data:
+        nombre_archivo = f'{USERNAME}_entrega_final.csv'
+        with open(nombre_archivo, 'w', newline='', encoding='utf-8') as f:
+            columnas = ['tipo_dato', 'post_url', 'detalle', 'comment_1', 'comment_2', 'comment_3']
+            writer = csv.DictWriter(f, fieldnames=columnas)
             writer.writeheader()
-
-            for fila in data_final:
-                fila.setdefault('post_url', '')
-                fila.setdefault('detalle', '')
-                fila.setdefault('comment_1', '')
-                fila.setdefault('comment_2', '')
-                fila.setdefault('comment_3', '')
+            for fila in total_data:
                 writer.writerow(fila)
 
-        print(f"\n¡TAREA FINALIZADA! Descarga el archivo: {archivo}")
+        print(f"\n[ÉXITO] Archivo generado para entrega: {nombre_archivo}")
 
-# Arrancamos el código
-await ejecutar_tarea()
+# Iniciar proceso
+await ejecutar_scrapper()
